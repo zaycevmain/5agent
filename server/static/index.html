@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5agent — мониторинг</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="apple-touch-icon" href="/static/favicon.svg">
+<style>
+  :root {
+    --text: #e7ecf7;
+    --muted: #8b96ad;
+    --ok: #22c55e;
+    --bad: #ef4444;
+    --warn: #f59e0b;
+    --border: rgba(255,255,255,0.08);
+    --bg:
+      radial-gradient(1100px 560px at 85% -10%, rgba(34,211,238,0.14), transparent 60%),
+      radial-gradient(900px 520px at -10% 5%, rgba(167,139,250,0.12), transparent 60%),
+      linear-gradient(160deg, #0a0e1a 0%, #0e1524 45%, #0a0f1c 100%);
+    --header-bg: linear-gradient(180deg, rgba(18,25,44,0.82), rgba(12,17,32,0.72));
+    --h1-grad: linear-gradient(135deg, #ffffff 20%, #9db4dc 90%);
+    --num-grad: linear-gradient(135deg, #f1f5fb, #a9b4cc);
+    --panel: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.015));
+    --panel2: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.015));
+    --chip: rgba(255,255,255,0.06);
+    --chip-border: rgba(255,255,255,0.08);
+    --input-border: rgba(255,255,255,0.1);
+    --btn-bg: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03));
+    --btn-border: rgba(255,255,255,0.12);
+    --btn-hover: rgba(255,255,255,0.32);
+    --card-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    --card-shadow-hover: 0 16px 40px rgba(0,0,0,0.45);
+    --card-hover-border: rgba(255,255,255,0.16);
+    --problems-bg: linear-gradient(180deg, rgba(239,68,68,0.14), rgba(239,68,68,0.03));
+    --problems-border: rgba(239,68,68,0.35);
+    --problems-item: rgba(239,68,68,0.18);
+    --problems-tag: #f87171;
+    --device-border: rgba(255,255,255,0.05);
+  }
+  html[data-theme="light"] {
+    --text: #1a2333;
+    --muted: #5b6474;
+    --ok: #16a34a;
+    --bad: #dc2626;
+    --warn: #d97706;
+    --border: rgba(0,0,0,0.08);
+    --bg:
+      radial-gradient(1100px 560px at 85% -10%, rgba(34,211,238,0.08), transparent 60%),
+      radial-gradient(900px 520px at -10% 5%, rgba(167,139,250,0.08), transparent 60%),
+      linear-gradient(160deg, #f4f6fb 0%, #e9edf6 45%, #eef1f8 100%);
+    --header-bg: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(245,247,251,0.8));
+    --h1-grad: linear-gradient(135deg, #111827, #4b5563);
+    --num-grad: linear-gradient(135deg, #111827, #6b7280);
+    --panel: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.7));
+    --panel2: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(255,255,255,0.6));
+    --chip: rgba(0,0,0,0.05);
+    --chip-border: rgba(0,0,0,0.08);
+    --input-border: rgba(0,0,0,0.14);
+    --btn-bg: linear-gradient(180deg, #ffffff, #eef2f7);
+    --btn-border: rgba(0,0,0,0.14);
+    --btn-hover: rgba(0,0,0,0.28);
+    --card-shadow: 0 10px 24px rgba(15,23,42,0.08);
+    --card-shadow-hover: 0 16px 32px rgba(15,23,42,0.12);
+    --card-hover-border: rgba(0,0,0,0.14);
+    --problems-bg: linear-gradient(180deg, rgba(220,38,38,0.08), rgba(220,38,38,0.02));
+    --problems-border: rgba(220,38,38,0.3);
+    --problems-item: rgba(220,38,38,0.14);
+    --problems-tag: #dc2626;
+    --device-border: rgba(0,0,0,0.06);
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  html[data-theme="light"] { color-scheme: light; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+    color: var(--text);
+    min-height: 100vh;
+    background: var(--bg);
+    background-attachment: fixed;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+    padding: 16px 24px;
+    background: var(--header-bg);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 {
+    margin: 0; font-size: 21px; font-weight: 800; letter-spacing: .01em;
+    background: var(--h1-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .stats { display: flex; gap: 20px; flex-wrap: wrap; }
+  .stat { text-align: center; min-width: 62px; }
+  .stat .num {
+    font-size: 20px; font-weight: 800; line-height: 1.15;
+    background: var(--num-grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .stat .num.num-ok { background: linear-gradient(135deg, #4ade80, #16a34a); -webkit-background-clip: text; background-clip: text; }
+  .stat .num.num-warn { background: linear-gradient(135deg, #fbbf24, #d97706); -webkit-background-clip: text; background-clip: text; }
+  .stat .num.num-bad { background: linear-gradient(135deg, #f87171, #dc2626); -webkit-background-clip: text; background-clip: text; }
+  .stat .lbl { font-size: 10px; color: var(--muted); letter-spacing: .02em; }
+
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+  .dot.ok { background: radial-gradient(circle at 35% 35%, #4ade80, #16a34a); box-shadow: 0 0 8px rgba(34,197,94,0.65); }
+  .dot.bad { background: radial-gradient(circle at 35% 35%, #f87171, #dc2626); box-shadow: 0 0 8px rgba(239,68,68,0.65); animation: pulse 2s infinite; }
+  .dot.off { background: radial-gradient(circle at 35% 35%, #5b6474, #39415a); }
+  .dot.warn { background: radial-gradient(circle at 35% 35%, #fbbf24, #d97706); box-shadow: 0 0 8px rgba(245,158,11,0.65); }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+    50% { box-shadow: 0 0 16px rgba(239,68,68,0.9); }
+  }
+
+  main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+  section { margin-bottom: 26px; }
+  section h2 {
+    font-size: 12px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .12em;
+    display: flex; align-items: center; gap: 10px; margin: 0 0 12px;
+  }
+  section h2::before {
+    content: ""; width: 22px; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, #22d3ee, #a78bfa);
+  }
+
+  #problems {
+    background: var(--problems-bg);
+    border: 1px solid var(--problems-border);
+    border-radius: 14px;
+    padding: 12px 16px;
+    display: none;
+    box-shadow: 0 10px 30px rgba(239,68,68,0.08);
+  }
+  #problems.show { display: block; }
+  #problems .item { padding: 7px 0; border-bottom: 1px solid var(--problems-item); }
+  #problems .item:last-child { border-bottom: none; }
+  #problems .tag { color: var(--problems-tag); font-weight: 700; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 18px;
+    box-shadow: var(--card-shadow);
+    backdrop-filter: blur(8px);
+    transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+  }
+  .card:hover { transform: translateY(-2px); border-color: var(--card-hover-border); box-shadow: var(--card-shadow-hover); }
+  .card.disabled { opacity: .55; }
+  .card.pending { border-color: rgba(245,158,11,0.5); box-shadow: 0 0 22px rgba(245,158,11,0.08); }
+  .card-head {
+    display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;
+    margin-bottom: 8px; gap: 6px;
+  }
+  .card-head .name { font-weight: 700; font-size: 14px; }
+  .card-head .meta { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .state-badge {
+    font-size: 11px; padding: 2px 9px; border-radius: 999px;
+    background: var(--chip); color: var(--muted);
+    border: 1px solid var(--chip-border);
+  }
+  .device {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 7px 10px; margin-top: 6px;
+    background: var(--panel2);
+    border: 1px solid var(--device-border);
+    border-radius: 10px;
+  }
+  .device .dname { flex: 0 1 auto; min-width: 0; max-width: 120px; font-weight: 500; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .device .dtype { flex: 0 0 auto; font-size: 10px; color: var(--muted); }
+  .device .dmsg { flex: 1 1 60px; min-width: 0; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  details.devices summary {
+    cursor: pointer; font-size: 11px; color: var(--muted); user-select: none;
+    padding: 4px 2px; list-style: none;
+  }
+  details.devices summary::before {
+    content: "▸ "; color: var(--muted);
+  }
+  details.devices[open] summary::before { content: "▾ "; }
+  details.devices summary:hover { color: var(--text); }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .refresh { font-size: 12px; color: var(--muted); }
+
+  .btn {
+    background: var(--btn-bg);
+    color: var(--text); border: 1px solid var(--btn-border);
+    border-radius: 8px; padding: 5px 10px; font-size: 11px; cursor: pointer;
+    transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  }
+  .btn:hover { border-color: var(--btn-hover); transform: translateY(-1px); }
+  .btn.ico { padding: 3px 7px; font-size: 13px; line-height: 1.2; }
+  .btn.ok { color: #16a34a; border-color: rgba(34,197,94,0.4); }
+  .btn.ok:hover { background: rgba(34,197,94,0.14); }
+  .btn.danger { color: #dc2626; border-color: rgba(239,68,68,0.4); }
+  .btn.danger:hover { background: rgba(239,68,68,0.14); }
+  .btn-row { display: flex; gap: 6px; }
+  .icon-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 13px; padding: 0 4px; opacity: .5; vertical-align: middle;
+  }
+  .icon-btn:hover { opacity: 1; color: var(--text); }
+  .theme-toggle {
+    background: var(--chip); border: 1px solid var(--chip-border);
+    color: var(--text); cursor: pointer; font-size: 15px; line-height: 1;
+    border-radius: 999px; padding: 6px 9px;
+  }
+
+  .struct-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .btn.sm { padding: 4px 9px; font-size: 11px; }
+  .zone {
+    background: var(--panel);
+    border: 1px solid var(--border); border-radius: 14px;
+    padding: 12px 16px; margin-bottom: 14px;
+  }
+  .zone-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .zone-name { font-weight: 800; font-size: 15px; }
+  .zone-cols { display: flex; flex-wrap: wrap; gap: 12px; align-items: stretch; }
+  .group-col {
+    flex: 1 1 220px; min-width: 200px; max-width: 340px;
+    border: 1px dashed var(--input-border); border-radius: 12px;
+    padding: 8px 10px; transition: border-color .15s, background .15s;
+  }
+  .group-col.dragover { border-color: #22d3ee; background: rgba(34,211,238,0.06); }
+  .group-col-head { display: flex; align-items: center; justify-content: space-between; font-weight: 800; font-size: 14px; margin-bottom: 6px; }
+  .group-col-body {
+    position: relative; padding-left: 12px; min-height: 18px;
+    border-left: 2px solid rgba(34,211,238,0.5);
+  }
+  .group-col-body::before,
+  .group-col-body::after {
+    content: ""; position: absolute; left: 0; width: 8px; height: 2px;
+    background: rgba(34,211,238,0.5);
+  }
+  .group-col-body::before { top: 0; }
+  .group-col-body::after { bottom: 0; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--chip); border: 1px solid var(--chip-border);
+    border-radius: 999px; padding: 3px 8px 3px 10px; font-size: 12px;
+    margin: 2px 2px; cursor: grab;
+  }
+  .chip:active { cursor: grabbing; }
+  .chip .gname { color: var(--muted); }
+  .drop-zone {
+    border: 1px dashed var(--input-border); border-radius: 12px;
+    padding: 10px 12px; min-height: 34px; color: var(--muted); font-size: 12px;
+    margin-top: 6px;
+  }
+  .drop-zone.dragover { border-color: #22d3ee; background: rgba(34,211,238,0.06); }
+  .agent-id {
+    font-size: 10px; color: var(--muted); background: var(--chip);
+    border: 1px solid var(--chip-border); border-radius: 6px; padding: 1px 6px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  .agent-ips { font-size: 10px; color: var(--muted); font-family: ui-monospace, "SF Mono", Consolas, monospace; }
+  .group-col.problem {
+    border-color: rgba(239,68,68,0.55);
+    animation: glitch 1.7s infinite;
+  }
+  @keyframes glitch {
+    0%, 100% { box-shadow: 0 0 0 rgba(239,68,68,0); transform: translateX(0); }
+    20% { box-shadow: 0 0 20px rgba(239,68,68,0.45), inset 0 0 16px rgba(239,68,68,0.12); transform: translateX(1px); }
+    40% { box-shadow: 0 0 8px rgba(239,68,68,0.2), inset 0 0 6px rgba(239,68,68,0.06); transform: translateX(-1px); }
+    60% { box-shadow: 0 0 20px rgba(239,68,68,0.45), inset 0 0 16px rgba(239,68,68,0.12); transform: translateX(1px); }
+    80% { box-shadow: 0 0 8px rgba(239,68,68,0.2), inset 0 0 6px rgba(239,68,68,0.06); transform: translateX(-1px); }
+  }
+  .muted { color: var(--muted); font-size: 13px; }
+
+  .sysbar {
+    display: flex; flex-wrap: wrap; gap: 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px 18px; margin-bottom: 22px;
+    font-size: 13px; color: var(--muted);
+    backdrop-filter: blur(8px);
+  }
+  .sysbar b { color: var(--text); font-weight: 700; }
+  .sys-link { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+  }
+  .modal {
+    background: #141b2c; border: 1px solid var(--border); border-radius: 14px;
+    width: 100%; max-width: 560px; max-height: 70vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .modal-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  .modal-body { padding: 12px 16px; overflow-y: auto; }
+  .event-item { padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .event-item:last-child { border-bottom: none; }
+  .event-time { color: var(--muted); font-size: 10px; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>5agent — мониторинг</h1>
+  <div class="stats">
+    <div class="stat"><div class="num num-ok" id="agents-online">0</div><div class="lbl">агентов онлайн</div></div>
+    <div class="stat"><div class="num" id="agents-total">0</div><div class="lbl">агентов всего</div></div>
+    <div class="stat"><div class="num num-warn" id="agents-pending">0</div><div class="lbl">ожидают</div></div>
+    <div class="stat"><div class="num" id="agents-disabled">0</div><div class="lbl">отключены</div></div>
+    <div class="stat"><div class="num num-bad" id="devices-down">0</div><div class="lbl">устройств с проблемой</div></div>
+  </div>
+  <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Переключить тему">☀️</button>
+  <div class="refresh" id="refresh"></div>
+</header>
+<main>
+  <section class="sysbar" id="sysbar">
+    <span>Версия: <b id="sys-version">—</b></span>
+    <span>Сервер: <b id="sys-server">—</b></span>
+    <span>Аптайм: <b id="sys-uptime">—</b></span>
+    <span>Время: <b id="sys-time">—</b></span>
+    <span>Событий в журнале: <b id="sys-events" class="sys-link" onclick="openEvents()" title="Показать журнал">—</b></span>
+  </section>
+
+  <section>
+    <h2>Проблемы</h2>
+    <div id="problems"></div>
+  </section>
+
+  <section>
+    <h2>Структура (зоны и группы)</h2>
+    <div id="structure"></div>
+  </section>
+
+  <section id="pending-section" style="display:none">
+    <h2>Ожидают подтверждения</h2>
+    <div class="grid" id="grid-pending"></div>
+  </section>
+
+  <section>
+    <h2>Нераспределённые агенты</h2>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty">Пока нет агентов. Запустите агента и укажите в нём адрес этого сервера.</div>
+  </section>
+
+  <section id="disabled-section" style="display:none">
+    <h2>Отключены</h2>
+    <div class="grid" id="grid-disabled"></div>
+  </section>
+</main>
+
+<div class="modal-overlay" id="events-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-head">
+      <span>Журнал событий</span>
+      <button class="icon-btn" onclick="closeEvents()">✕</button>
+    </div>
+    <div class="modal-body" id="events-body"></div>
+  </div>
+</div>
+<script>
+const TYPE_LABELS = {
+  process: "Процесс", window: "Окно", com: "COM", printer: "Принтер",
+  rfid: "RFID", custom: "Другое"
+};
+let ALL_AGENTS = [];
+let OPEN_DEVICES = new Set();
+
+function toggleTheme() {
+  const html = document.documentElement;
+  if (html.getAttribute("data-theme") === "light") {
+    html.removeAttribute("data-theme");
+    localStorage.setItem("theme", "dark");
+  } else {
+    html.setAttribute("data-theme", "light");
+    localStorage.setItem("theme", "light");
+  }
+  updateThemeButton();
+}
+function updateThemeButton() {
+  const light = document.documentElement.getAttribute("data-theme") === "light";
+  document.getElementById("theme-toggle").textContent = light ? "🌙" : "☀️";
+}
+(function initTheme() {
+  if (localStorage.getItem("theme") === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+  }
+  updateThemeButton();
+})();
+
+function fmtTime(ts) {
+  if (!ts) return "—";
+  return new Date(ts * 1000).toLocaleTimeString("ru-RU");
+}
+function ago(ts) {
+  if (!ts) return "—";
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  if (s < 5) return "сейчас";
+  if (s < 60) return s + " сек назад";
+  if (s < 3600) return Math.floor(s / 60) + " мин назад";
+  return Math.floor(s / 3600) + " ч назад";
+}
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+let _audioCtx = null;
+let _prevProblemKeys = new Set();
+let _firstRender = true;
+
+function ensureAudio() {
+  if (!_audioCtx) {
+    try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+  }
+  if (_audioCtx && _audioCtx.state === "suspended") { _audioCtx.resume(); }
+}
+async function playAlertSound() {
+  ensureAudio();
+  if (!_audioCtx) return;
+  if (_audioCtx.state === "suspended") {
+    try { await _audioCtx.resume(); } catch (e) {}
+  }
+  if (_audioCtx.state !== "running") return;
+  try {
+    const t = _audioCtx.currentTime;
+    [880, 660].forEach((f, i) => {
+      const o = _audioCtx.createOscillator();
+      const g = _audioCtx.createGain();
+      o.connect(g); g.connect(_audioCtx.destination);
+      o.type = "square"; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t + i * 0.18);
+      g.gain.exponentialRampToValueAtTime(0.09, t + i * 0.18 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.18 + 0.15);
+      o.start(t + i * 0.18); o.stop(t + i * 0.18 + 0.16);
+    });
+  } catch (e) {}
+}
+function problemKey(p) {
+  return (p.kind || "") + "|" + (p.agent || "") + "|" + (p.device || "");
+}
+function checkNewProblems(problems) {
+  const keys = new Set((problems || []).map(problemKey));
+  if (!_firstRender) {
+    for (const k of keys) {
+      if (!_prevProblemKeys.has(k)) { playAlertSound(); break; }
+    }
+  }
+  _firstRender = false;
+  _prevProblemKeys = keys;
+}
+document.addEventListener("click", ensureAudio);
+
+async function act(agentId, action) {
+  let url = "/api/agents/" + encodeURIComponent(agentId);
+  let method = "POST";
+  if (action === "delete") {
+    method = "DELETE";
+  } else {
+    url += "/" + action;
+  }
+  try {
+    await fetch(url, { method });
+  } catch (e) {}
+  load();
+}
+
+async function post(url, body) {
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {}
+}
+
+async function renameAgent(btn) {
+  const name = prompt("Название агента (пусто — сбросить на hostname):", btn.dataset.name || "");
+  if (name === null) return;
+  await post("/api/agents/" + encodeURIComponent(btn.dataset.aid) + "/rename", { name });
+  load();
+}
+
+async function renameDevice(btn) {
+  const name = prompt("Название устройства (пусто — сбросить):", btn.dataset.name || "");
+  if (name === null) return;
+  await post("/api/devices/" + encodeURIComponent(btn.dataset.aid) + "/" + encodeURIComponent(btn.dataset.did) + "/rename", { name });
+  load();
+}
+
+function dragStart(e) {
+  e.dataTransfer.setData("text/plain", JSON.stringify({ aid: e.currentTarget.dataset.aid }));
+  e.dataTransfer.effectAllowed = "move";
+}
+function allowDrop(e) { e.preventDefault(); e.currentTarget.classList.add("dragover"); }
+function dragLeave(e) { e.currentTarget.classList.remove("dragover"); }
+function dropOnGroup(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("dragover");
+  const gid = e.currentTarget.dataset.gid || null;
+  let data;
+  try { data = JSON.parse(e.dataTransfer.getData("text/plain")); } catch (err) { return; }
+  if (!data || !data.aid) return;
+  post("/api/agents/" + encodeURIComponent(data.aid) + "/group", { group_id: gid }).then(load);
+}
+
+async function addZone() {
+  const name = prompt("Название зоны (например «Вход 1»):");
+  if (name === null || !name.trim()) return;
+  await post("/api/zones", { name });
+  load();
+}
+async function renameZone(btn) {
+  const name = prompt("Название зоны:", btn.dataset.name || "");
+  if (name === null) return;
+  await post("/api/zones/" + encodeURIComponent(btn.dataset.zid) + "/rename", { name });
+  load();
+}
+async function deleteZone(btn) {
+  if (!confirm("Удалить зону «" + btn.dataset.name + "»? Группы останутся без зоны.")) return;
+  await fetch("/api/zones/" + encodeURIComponent(btn.dataset.zid), { method: "DELETE" });
+  load();
+}
+async function addGroup(zoneId) {
+  const name = prompt("Название группы/объекта (например «СКУД 1»):");
+  if (name === null || !name.trim()) return;
+  await post("/api/groups", { name, zone_id: zoneId || null });
+  load();
+}
+async function renameGroup(btn) {
+  const name = prompt("Название группы:", btn.dataset.name || "");
+  if (name === null) return;
+  await post("/api/groups/" + encodeURIComponent(btn.dataset.gid) + "/rename", { name });
+  load();
+}
+async function deleteGroup(btn) {
+  if (!confirm("Удалить группу «" + btn.dataset.name + "»? Устройства останутся без группы.")) return;
+  await fetch("/api/groups/" + encodeURIComponent(btn.dataset.gid), { method: "DELETE" });
+  load();
+}
+async function moveGroup(btn, direction) {
+  await post("/api/groups/" + encodeURIComponent(btn.dataset.gid) + "/move", { direction });
+  load();
+}
+
+function agentsForGroup(gid) {
+  return ALL_AGENTS.filter(a => (a.group_id || null) === (gid || null));
+}
+
+function agentHealth(a) {
+  if (a.status === "offline") return "bad";
+  if (a.status === "pending") return "warn";
+  if (a.status === "disabled") return "off";
+  const anyDown = (a.devices || []).some(d => (d.eff_status ?? d.status) !== "ok");
+  return anyDown ? "warn" : "ok";
+}
+
+function dotSpan(health) {
+  if (health === "ok") return '<span class="dot ok"></span>';
+  if (health === "warn") return '<span class="dot warn"></span>';
+  if (health === "bad") return '<span class="dot bad"></span>';
+  return '<span class="dot off"></span>';
+}
+
+function groupHealth(gid) {
+  const ags = agentsForGroup(gid);
+  if (!ags.length) return "ok";
+  const hs = ags.map(a => agentHealth(a));
+  if (hs.every(h => h === "ok")) return "ok";
+  if (hs.every(h => h === "bad")) return "bad";
+  return "warn";
+}
+
+function groupCol(g) {
+  const ags = agentsForGroup(g.id);
+  const health = groupHealth(g.id);
+  return `<div class="group-col ${health !== "ok" ? "problem" : ""}" data-gid="${esc(g.id)}" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="dropOnGroup(event)">
+    <div class="group-col-head">
+      <span>${dotSpan(health)} ${esc(g.name)}</span>
+      <span>
+        <button class="icon-btn" data-gid="${esc(g.id)}" onclick="moveGroup(this,'left')" title="Левее">◀</button>
+        <button class="icon-btn" data-gid="${esc(g.id)}" onclick="moveGroup(this,'right')" title="Правее">▶</button>
+        <button class="icon-btn" data-gid="${esc(g.id)}" data-name="${esc(g.name)}" onclick="renameGroup(this)" title="Переименовать">✎</button>
+        <button class="icon-btn" data-gid="${esc(g.id)}" data-name="${esc(g.name)}" onclick="deleteGroup(this)" title="Удалить">🗑</button>
+      </span>
+    </div>
+    <div class="group-col-body">
+      ${ags.length ? ags.map(agentCard).join("") : '<span class="muted" style="font-size:11px">перетащи агента сюда</span>'}
+    </div>
+  </div>`;
+}
+
+function renderStructure(zones, ungrouped) {
+  let html = `<div class="struct-bar">
+    <button class="btn ok" onclick="addZone()">＋ Зона</button>
+    <button class="btn" onclick="addGroup(null)">＋ Группа (без зоны)</button>
+  </div>`;
+
+  html += `<div class="drop-zone" data-gid="" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" ondrop="dropOnGroup(event)">
+    Без группы — перетащи сюда агента, чтобы убрать из группы
+  </div>`;
+
+  (zones || []).forEach(z => {
+    const cols = (z.groups || []).map(groupCol).join("");
+    html += `<div class="zone">
+      <div class="zone-head">
+        <span class="zone-name">📁 ${esc(z.name)}</span>
+        <span>
+          <button class="icon-btn" data-zid="${esc(z.id)}" data-name="${esc(z.name)}" onclick="renameZone(this)" title="Переименовать">✎</button>
+          <button class="icon-btn" data-zid="${esc(z.id)}" data-name="${esc(z.name)}" onclick="deleteZone(this)" title="Удалить">🗑</button>
+        </span>
+      </div>
+      <div class="zone-cols">
+        ${cols}
+        <button class="btn sm" onclick="addGroup('${esc(z.id)}')">＋ группа</button>
+      </div>
+    </div>`;
+  });
+
+  if (ungrouped && ungrouped.length) {
+    html += `<div class="zone">
+      <div class="zone-head"><span class="zone-name">Без зоны</span></div>
+      <div class="zone-cols">${ungrouped.map(groupCol).join("")}</div>
+    </div>`;
+  }
+
+  document.getElementById("structure").innerHTML = html;
+}
+
+function badgeFor(a) {
+  const map = { pending: "ожидает", disabled: "отключён", active: "" };
+  return map[a.state] || "";
+}
+
+function applyDeviceOpenState() {
+  document.querySelectorAll("details.devices").forEach(el => {
+    const aid = el.dataset.aid;
+    el.addEventListener("toggle", () => {
+      if (el.open) OPEN_DEVICES.add(aid); else OPEN_DEVICES.delete(aid);
+    });
+    el.open = OPEN_DEVICES.has(aid);
+  });
+}
+
+function agentCard(a) {
+  const devices = a.devices || [];
+  const devHtml = devices.length ? devices.map(d => {
+    const ok = (d.eff_status ?? d.status) === "ok";
+    const ddot = ok ? '<span class="dot ok"></span>' : '<span class="dot bad"></span>';
+    const dlabel = d.label || d.name;
+    return `<div class="device">
+      ${ddot}
+      <div class="dname">${esc(dlabel)}</div>
+      <div class="dtype">${esc(TYPE_LABELS[d.type] || d.type)}</div>
+      <button class="icon-btn" data-aid="${esc(a.agent_id)}" data-did="${esc(d.id)}" data-name="${esc(dlabel)}" onclick="renameDevice(this)" title="Переименовать">✎</button>
+    </div>`;
+  }).join("") : `<div class="device"><div class="dmsg">нет устройств</div></div>`;
+
+  const devBlock = devices.length
+    ? `<details class="devices" data-aid="${esc(a.agent_id)}"><summary>Отслеживаемые: ${devices.length}</summary>${devHtml}</details>`
+    : "";
+
+  let btns = "";
+  if (a.state === "active") {
+    btns = `<div class="btn-row"><button class="btn ico danger" title="Отключить" onclick="act('${esc(a.agent_id)}','disable')">⏻</button></div>`;
+  } else if (a.state === "pending") {
+    btns = `<div class="btn-row">
+      <button class="btn ico ok" title="Подтвердить" onclick="act('${esc(a.agent_id)}','enable')">✓</button>
+      <button class="btn ico danger" title="Отклонить" onclick="act('${esc(a.agent_id)}','disable')">✕</button>
+    </div>`;
+  } else {
+    btns = `<div class="btn-row">
+      <button class="btn ico ok" title="Включить" onclick="act('${esc(a.agent_id)}','enable')">✓</button>
+      <button class="btn ico danger" title="Удалить" onclick="act('${esc(a.agent_id)}','delete')">🗑</button>
+    </div>`;
+  }
+
+  const badge = badgeFor(a);
+  const alabel = a.label || a.hostname;
+  const ipsHtml = a.local_ip ? `<span class="agent-ips">LAN ${esc(a.local_ip)}</span> ` : "";
+  return `<div class="card ${a.state}" draggable="true" data-aid="${esc(a.agent_id)}" ondragstart="dragStart(event)">
+    <div class="card-head">
+      <div style="min-width:0">
+        <div class="name">${dotSpan(agentHealth(a))} ${esc(alabel)}
+          <button class="icon-btn" data-aid="${esc(a.agent_id)}" data-name="${esc(alabel)}" onclick="renameAgent(this)" title="Переименовать">✎</button>
+        </div>
+        <div class="meta" title="last seen ${fmtTime(a.last_seen)}">${badge ? '<span class="state-badge">' + badge + '</span> ' : ''}${ipsHtml}last seen: ${ago(a.last_seen)}</div>
+      </div>
+      ${btns}
+    </div>
+    ${devBlock}
+  </div>`;
+}
+
+async function openEvents() {
+  let data;
+  try { data = await (await fetch("/api/events")).json(); } catch (e) { return; }
+  const events = data.events || [];
+  const html = events.length ? events.map(e => {
+    const t = new Date(e.ts * 1000).toLocaleString("ru-RU");
+    return `<div class="event-item"><div class="event-time">${esc(t)}</div><div>${esc(e.text)}</div></div>`;
+  }).join("") : '<div class="muted">Событий пока нет</div>';
+  document.getElementById("events-body").innerHTML = html;
+  document.getElementById("events-modal").style.display = "flex";
+}
+function closeEvents() {
+  document.getElementById("events-modal").style.display = "none";
+}
+
+async function load() {
+  let data;
+  try {
+    data = await (await fetch("/api/state")).json();
+  } catch (e) {
+    return;
+  }
+  render(data);
+}
+
+function fmtUptime(s) {
+  if (s == null) return "—";
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return d + " д " + h + " ч " + m + " мин";
+  if (h > 0) return h + " ч " + m + " мин";
+  return m + " мин " + (s % 60) + " сек";
+}
+
+function renderSystem(sys) {
+  if (!sys) return;
+  document.getElementById("sys-version").textContent = "v" + (sys.version || "—");
+  document.getElementById("sys-server").textContent =
+    (sys.hostname || "—") + " (" + sys.host + ":" + sys.port + ")";
+  document.getElementById("sys-uptime").textContent = fmtUptime(sys.uptime_seconds);
+  document.getElementById("sys-time").textContent =
+    new Date((sys.server_time || Date.now() / 1000) * 1000).toLocaleString("ru-RU");
+  document.getElementById("sys-events").textContent = sys.events_count ?? 0;
+}
+
+function render(data) {
+  const agents = data.agents || [];
+  const problems = data.problems || [];
+
+  renderSystem(data.system);
+
+  const zones = data.zones || [];
+  const ungrouped = data.ungrouped_groups || [];
+
+  const active = agents.filter(a => a.state === "active");
+  const pending = agents.filter(a => a.state === "pending");
+  const disabled = agents.filter(a => a.state === "disabled");
+
+  ALL_AGENTS = active;
+  renderStructure(zones, ungrouped);
+
+  const online = active.filter(a => a.status === "online").length;
+  const down = problems.filter(p => p.kind === "device").length;
+
+  document.getElementById("agents-online").textContent = online;
+  document.getElementById("agents-total").textContent = active.length;
+  document.getElementById("agents-pending").textContent = pending.length;
+  document.getElementById("agents-disabled").textContent = disabled.length;
+  document.getElementById("devices-down").textContent = down;
+
+  const probEl = document.getElementById("problems");
+  if (problems.length) {
+    probEl.classList.add("show");
+    probEl.innerHTML = problems.map(p => {
+      const label = p.kind === "agent"
+        ? `<span class="tag">АГЕНТ</span> ${esc(p.agent)} — ${esc(p.text)}`
+        : `<span class="tag">УСТРОЙСТВО</span> ${esc(p.device)} — ${esc(p.text)}`;
+      return `<div class="item">${label}</div>`;
+    }).join("");
+  } else {
+    probEl.classList.remove("show");
+    probEl.innerHTML = "";
+  }
+  checkNewProblems(problems);
+
+  const unassigned = active.filter(a => !a.group_id);
+  document.getElementById("grid").innerHTML = unassigned.map(agentCard).join("");
+  document.getElementById("empty").style.display = agents.length ? "none" : "block";
+
+  document.getElementById("grid-pending").innerHTML = pending.map(agentCard).join("");
+  document.getElementById("pending-section").style.display = pending.length ? "block" : "none";
+
+  document.getElementById("grid-disabled").innerHTML = disabled.map(agentCard).join("");
+  document.getElementById("disabled-section").style.display = disabled.length ? "block" : "none";
+
+  applyDeviceOpenState();
+
+  document.getElementById("refresh").textContent = "обновлено: " + new Date().toLocaleTimeString("ru-RU");
+}
+
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>
